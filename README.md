@@ -8,21 +8,21 @@ A cross-platform mobile app for serious poker players to **track their bankroll,
 
 ## Features
 
-### 📊 Grind — Bankroll Tracking
+### Grind — Bankroll Tracking
 - Log cash-game sessions (buy-in, cash-out, hours, stakes, notes)
 - Automatic profit, hourly win-rate, best/worst session, and total-hours stats
 - Group sessions with custom labels (e.g. by casino or game type) and filter on the fly
 - Cumulative bankroll chart so you can see your trend over time
 - Full edit/delete with confirmation, synced to the cloud per user
 
-### 🧠 Train — Study Tools
+### Train — Study Tools
 - **Scenarios** — preflop decision drills on a visual table with instant GTO feedback and a running score
 - **GTO Charts** — interactive 13×13 open-raise range grids for every position
 - **Flashcards** — core poker-theory concepts (pot odds, SPR, blockers, range advantage…)
 - **Odds Calculator** — heads-up equity via on-device Monte Carlo simulation, with optional flop
 - **Positions Guide** — tap any seat to learn its strategy, plus a position power ranking
 
-### 🤖 AI Coach
+### AI Coach
 - Chat with an LLM poker coach for GTO advice and hand analysis
 - The coach is **stats-aware** — your real session numbers are injected into the prompt, so feedback is grounded in your actual results
 - Quick-prompt suggestions to get started fast
