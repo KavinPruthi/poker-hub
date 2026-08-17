@@ -1,47 +1,92 @@
-import { Alert, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { Switch, Text, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { getTheme } from '../theme/colors';
+import { Button, Card, ConfirmSheet, Divider, Header, Screen, SectionLabel, TYPE } from '../components/ui';
 
-// Account + preferences. Dark mode preference is persisted to the user's
-// Supabase metadata (handled by the root App), so it follows them across devices.
-export default function SettingsScreen({ dark, setDark, user }) {
+// Account and preferences. The theme choice is written to the user's Supabase
+// metadata by the root App, so it follows them to any device they sign in on.
+export default function SettingsScreen({ dark, setDark, user, guest, onSignIn }) {
   const C = getTheme(dark);
+  const [confirming, setConfirming] = useState(false);
 
-  const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: () => supabase.auth.signOut() },
-    ]);
-  };
+  const Row = ({ label, value, children }) => (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15, color: C.text }}>{label}</Text>
+        {value ? (
+          <Text style={{ ...TYPE.small, color: C.subtext, marginTop: 2 }}>{value}</Text>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  );
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 28, paddingTop: 64, paddingBottom: 100 }}>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: C.text, marginBottom: 32 }}>⚙️ Settings</Text>
+    <View style={{ flex: 1 }}>
+      <Screen dark={dark}>
+        <Header dark={dark} title="More" />
 
-        <View style={{ backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.cardBorder, overflow: 'hidden', marginBottom: 16 }}>
-          <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: C.cardBorder }}>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: C.subtext, marginBottom: 4 }}>SIGNED IN AS</Text>
-            <Text style={{ fontSize: 15, fontWeight: '600', color: C.text }}>{user?.email}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: C.cardBorder }}>
-            <View><Text style={{ fontSize: 16, fontWeight: '600', color: C.text }}>Dark Mode</Text><Text style={{ fontSize: 13, color: C.subtext, marginTop: 2 }}>Easy on the eyes at the table</Text></View>
-            <Switch value={dark} onValueChange={setDark} trackColor={{ false: '#ccc', true: C.accent }} thumbColor="#fff" />
-          </View>
-          <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: C.cardBorder }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: C.text }}>Version</Text>
-            <Text style={{ fontSize: 13, color: C.subtext, marginTop: 2 }}>Poker Hub v2.0.0 — AI Edition</Text>
-          </View>
-          <View style={{ padding: 20 }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: C.text }}>Stack</Text>
-            <Text style={{ fontSize: 13, color: C.subtext, marginTop: 2 }}>React Native · Expo · Supabase · Groq AI</Text>
-          </View>
-        </View>
+        <SectionLabel dark={dark}>Account</SectionLabel>
+        <Card dark={dark} padded={false} style={{ marginBottom: 26 }}>
+          {guest ? (
+            <View style={{ padding: 16 }}>
+              <Text style={{ fontSize: 15, color: C.text }}>Not signed in</Text>
+              <Text style={{ ...TYPE.small, color: C.subtext, marginTop: 4 }}>
+                Nothing you do right now is being saved.
+              </Text>
+              <Button dark={dark} label="Sign in" onPress={onSignIn} style={{ marginTop: 14 }} />
+            </View>
+          ) : (
+            <Row label={user?.email} value="Signed in" />
+          )}
+        </Card>
 
-        <TouchableOpacity onPress={handleLogout} style={{ backgroundColor: C.redSoft, borderRadius: 16, padding: 18, alignItems: 'center', borderWidth: 1, borderColor: C.red }}>
-          <Text style={{ color: C.red, fontWeight: '700', fontSize: 16 }}>Sign Out</Text>
-        </TouchableOpacity>
-      </ScrollView>
+        <SectionLabel dark={dark}>Display</SectionLabel>
+        <Card dark={dark} padded={false} style={{ marginBottom: 26 }}>
+          <Row label="Dark" value="Easier on the eyes at a table">
+            <Switch
+              value={dark}
+              onValueChange={setDark}
+              trackColor={{ false: C.cardBorder, true: C.accent }}
+              thumbColor={dark ? C.accentText : '#FFFFFF'}
+            />
+          </Row>
+        </Card>
+
+        <SectionLabel dark={dark}>About</SectionLabel>
+        <Card dark={dark} padded={false} style={{ marginBottom: 26 }}>
+          <Row label="Version" value="2.0" />
+          <Divider dark={dark} />
+          <Row label="Built with" value="React Native, Expo, Supabase" />
+          <Divider dark={dark} />
+          <Row
+            label="Equity"
+            value="Monte Carlo, 5,000 hands per matchup, run on the device"
+          />
+        </Card>
+
+        {!guest && (
+          <Button dark={dark} tone="danger" label="Sign out" onPress={() => setConfirming(true)} />
+        )}
+      </Screen>
+
+      <ConfirmSheet
+        dark={dark}
+        visible={confirming}
+        onClose={() => setConfirming(false)}
+        title="Sign out?"
+        body="Your sessions stay where they are. You can sign back in any time."
+        confirmLabel="Sign out"
+        onConfirm={() => supabase.auth.signOut()}
+      />
     </View>
   );
 }

@@ -13,11 +13,11 @@ export const SCENARIOS = [
 ];
 
 export const FLASHCARDS = [
-  { q: 'What does GTO stand for?', a: 'Game Theory Optimal — a strategy where you cannot be exploited regardless of what your opponent does.' },
+  { q: 'What does GTO stand for?', a: 'Game Theory Optimal. A strategy where you cannot be exploited regardless of what your opponent does.' },
   { q: 'What is pot odds?', a: 'The ratio of the pot size to the cost of calling. If pot is $100 and call is $25, you are getting 4:1 (need 20% equity to break even).' },
-  { q: 'What is position and why does it matter?', a: 'Position = acting last post-flop. Late position (BTN/CO) gives you more info about opponents before acting — huge strategic advantage.' },
+  { q: 'What is position and why does it matter?', a: 'Position = acting last post-flop. Late position (BTN/CO) gives you more info about opponents before acting, which is a large edge.' },
   { q: 'What is a 3-bet?', a: 'The third bet in a sequence. Open raise = 1st bet, re-raise = 2-bet, re-re-raise = 3-bet. Shows a strong linear or polarized range.' },
-  { q: 'What are suited connectors?', a: 'Cards of the same suit in consecutive order (e.g. 7♠8♠). Valued for making straights and flushes — great implied odds hands.' },
+  { q: 'What are suited connectors?', a: 'Cards of the same suit in consecutive order (e.g. 7♠8♠). Valued for making straights and flushes, so the implied odds are good.' },
   { q: 'What is SPR?', a: 'Stack-to-Pot Ratio. SPR = effective stack / pot size. Low SPR (<4) = commit with top pair. High SPR = need stronger hands.' },
   { q: 'What is a c-bet?', a: 'Betting on the flop after being the preflop aggressor. A standard play to represent your range and take down the pot.' },
   { q: 'What is range advantage?', a: 'When your range hits the board texture better than your opponent. E.g. as a UTG raiser, you have range advantage on A-K-Q boards.' },
@@ -26,14 +26,14 @@ export const FLASHCARDS = [
 ];
 
 export const POSITION_INFO = [
-  { label: 'UTG', full: 'Under the Gun', emoji: '🔫', color: '#FF4D6A', desc: 'First to act preflop. Tightest range required — 8 players left to act after you. Only open premium hands.' },
-  { label: 'UTG+1', full: 'Under the Gun +1', emoji: '⚠️', color: '#FF7043', desc: 'Second to act. Still very early position. Only slightly wider than UTG. Think top 15% of hands.' },
-  { label: 'MP', full: 'Middle Position', emoji: '⚖️', color: '#F5A623', desc: 'Middle of the table. Starting to open up. You have decent info on early players but CO/BTN/blinds still to act.' },
-  { label: 'HJ', full: 'Hijack', emoji: '🚀', color: '#FFD700', desc: 'Starting to get into late position territory. Can open ~25% of hands. Great spot to steal with suited connectors.' },
-  { label: 'CO', full: 'Cutoff', emoji: '✂️', color: '#00C48C', desc: 'Second best position at the table. Only BTN acts after you post-flop. Open wide and apply pressure.' },
-  { label: 'BTN', full: 'Button', emoji: '👑', color: '#6C47FF', desc: 'BEST position in poker. You act last every single post-flop street. Open up to 45% of hands here. Maximum aggression.' },
-  { label: 'SB', full: 'Small Blind', emoji: '💀', color: '#7A7F8E', desc: 'Worst position post-flop — you always act first. Even though you get a discount preflop, you are out of position every street.' },
-  { label: 'BB', full: 'Big Blind', emoji: '🛡️', color: '#4A90D9', desc: 'You have the last action preflop and get a discount to call. Post-flop you act first. Defend wide but play carefully.' },
+  { label: 'UTG', full: 'Under the Gun', desc: 'First to act preflop, with eight players still to speak. Open premium hands only.' },
+  { label: 'UTG+1', full: 'Under the Gun +1', desc: 'Second to act, still early. Barely wider than UTG. Think the top 15% of hands.' },
+  { label: 'MP', full: 'Middle Position', desc: 'You have read the early players, but the cutoff, button and blinds are all still behind you.' },
+  { label: 'HJ', full: 'Hijack', desc: 'Late position starts here. Around 25% of hands, and a good seat to steal from with suited connectors.' },
+  { label: 'CO', full: 'Cutoff', desc: 'Second best seat at the table. Only the button acts after you once the flop is out. Open wide.' },
+  { label: 'BTN', full: 'Button', desc: 'The best seat in poker. You act last on every street after the flop, so up to 45% of hands are playable.' },
+  { label: 'SB', full: 'Small Blind', desc: 'The worst seat after the flop, because you always act first. The preflop discount does not make up for it.' },
+  { label: 'BB', full: 'Big Blind', desc: 'Last action preflop and a discount to call, then first to act on every street after. Defend wide, play carefully.' },
 ];
 
 export const QUICK_PROMPTS = [

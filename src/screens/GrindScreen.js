@@ -1,307 +1,530 @@
-import { useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { getTheme } from '../theme/colors';
 import { DEFAULT_LABELS } from '../constants/ranges';
 import BankrollChart from '../components/BankrollChart';
+import SignInPrompt from '../components/SignInPrompt';
+import {
+  Button,
+  Card,
+  ConfirmSheet,
+  Divider,
+  Header,
+  Screen,
+  SectionLabel,
+  Sheet,
+  TYPE,
+  money,
+  nums,
+} from '../components/ui';
 
-// Bankroll tracker. Sessions live in Supabase (scoped to the signed-in user via
-// row-level security) and can be filtered/grouped by a free-form label such as
-// a casino name or game type.
-export default function GrindScreen({ dark, user }) {
+const ALL = 'All Time';
+
+// Bankroll tracker. Sessions live in Supabase, scoped to the signed-in user by
+// row-level security, and can be grouped by a free-form label such as a venue
+// or a game type.
+export default function GrindScreen({ dark, user, guest, onSignIn }) {
   const C = getTheme(dark);
-  const [sessions, setSessions] = useState([]);
-  const [buyin, setBuyin] = useState('');
-  const [cashout, setCashout] = useState('');
-  const [hours, setHours] = useState('');
-  const [stakes, setStakes] = useState('');
-  const [note, setNote] = useState('');
-  const [selectedLabel, setSelectedLabel] = useState('All Time');
-  const [filterLabel, setFilterLabel] = useState('All Time');
-  const [labelModalVisible, setLabelModalVisible] = useState(false);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
-  const [customLabel, setCustomLabel] = useState('');
-  const [labels, setLabels] = useState(DEFAULT_LABELS);
 
-  const [editingSession, setEditingSession] = useState(null);
-  const [editBuyin, setEditBuyin] = useState('');
-  const [editCashout, setEditCashout] = useState('');
-  const [editHours, setEditHours] = useState('');
-  const [editNote, setEditNote] = useState('');
+  const [sessions, setSessions] = useState([]);
+  const [labels, setLabels] = useState(DEFAULT_LABELS);
+  const [error, setError] = useState('');
+
+  const [form, setForm] = useState({ buyin: '', cashout: '', hours: '', stakes: '', note: '' });
+  const [selectedLabel, setSelectedLabel] = useState(ALL);
+  const [filterLabel, setFilterLabel] = useState(ALL);
+
+  const [sheet, setSheet] = useState(null); // 'label' | 'filter' | 'edit' | 'clear' | 'delete'
+  const [customLabel, setCustomLabel] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [focused, setFocused] = useState(null);
+
+  const fetchSessions = useCallback(async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    if (data) {
+      setSessions(data);
+      const seen = [...new Set(data.map((s) => s.label).filter(Boolean))];
+      setLabels((prev) => [...new Set([...prev, ...seen])]);
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchSessions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchSessions]);
 
-  const fetchSessions = async () => {
-    const { data } = await supabase.from('sessions').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-    if (data) {
-      setSessions(data);
-      const dbLabels = [...new Set(data.map((s) => s.label).filter(Boolean))];
-      setLabels((prev) => [...new Set([...prev, ...dbLabels])]);
-    }
-  };
+  // Guests get the explanation, not a dead screen. Nothing below this runs for
+  // them, so no query is ever made without a user id.
+  if (guest) {
+    return (
+      <Screen dark={dark} scroll={false}>
+        <SignInPrompt
+          dark={dark}
+          onSignIn={onSignIn}
+          title="Sessions need an account"
+          reason="Buy-ins and results have to be stored somewhere, and there is nowhere to put them until you have an account."
+          bullets={[
+            'Your results follow you to any device you sign in on',
+            'The coach can read your actual numbers instead of guessing',
+            'It stays private to you',
+          ]}
+        />
+      </Screen>
+    );
+  }
+
+  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   const addSession = async () => {
-    if (!buyin || !cashout || !hours) {
-      Alert.alert('Missing fields', 'Please fill in buy-in, cash-out, and hours.');
+    const buyin = parseFloat(form.buyin);
+    const cashout = parseFloat(form.cashout);
+    const hours = parseFloat(form.hours);
+    if ([buyin, cashout, hours].some(Number.isNaN)) {
+      setError('Buy-in, cash-out and hours are all needed.');
       return;
     }
-    const insertData = {
-      user_id: user.id,
-      buyin: parseFloat(buyin),
-      cashout: parseFloat(cashout),
-      hours: parseFloat(hours),
-      profit: parseFloat(cashout) - parseFloat(buyin),
-    };
-    if (stakes) insertData.stakes = stakes;
-    if (note) insertData.note = note;
-    if (selectedLabel) insertData.label = selectedLabel;
-    const { error } = await supabase.from('sessions').insert([insertData]).select();
+    setError('');
+    const row = { user_id: user.id, buyin, cashout, hours, profit: cashout - buyin };
+    if (form.stakes) row.stakes = form.stakes;
+    if (form.note) row.note = form.note;
+    if (selectedLabel) row.label = selectedLabel;
+
+    const { error } = await supabase.from('sessions').insert([row]);
     if (error) {
-      Alert.alert('Error', error.message);
+      setError(error.message);
       return;
     }
+    setForm({ buyin: '', cashout: '', hours: '', stakes: '', note: '' });
     fetchSessions();
-    setBuyin('');
-    setCashout('');
-    setHours('');
-    setStakes('');
-    setNote('');
-  };
-
-  const deleteSession = (id) => {
-    Alert.alert('Delete Session', 'Remove this session?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await supabase.from('sessions').delete().eq('id', id).eq('user_id', user.id);
-          fetchSessions();
-        },
-      },
-    ]);
-  };
-
-  const openEdit = (s) => {
-    setEditingSession(s);
-    setEditBuyin(String(s.buyin));
-    setEditCashout(String(s.cashout));
-    setEditHours(String(s.hours));
-    setEditNote(s.note || '');
   };
 
   const saveEdit = async () => {
-    if (!editingSession) return;
+    if (!editing) return;
+    const buyin = parseFloat(editing.buyin);
+    const cashout = parseFloat(editing.cashout);
+    const hours = parseFloat(editing.hours);
+    if ([buyin, cashout, hours].some(Number.isNaN)) return;
     await supabase
       .from('sessions')
-      .update({
-        buyin: parseFloat(editBuyin),
-        cashout: parseFloat(editCashout),
-        hours: parseFloat(editHours),
-        profit: parseFloat(editCashout) - parseFloat(editBuyin),
-        note: editNote,
-      })
-      .eq('id', editingSession.id)
+      .update({ buyin, cashout, hours, profit: cashout - buyin, note: editing.note })
+      .eq('id', editing.id)
       .eq('user_id', user.id);
-    setEditingSession(null);
+    setEditing(null);
+    setSheet(null);
     fetchSessions();
   };
 
-  const clearSessions = () => {
-    Alert.alert('Clear Sessions', `Delete all "${filterLabel}" sessions?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          if (filterLabel === 'All Time') await supabase.from('sessions').delete().eq('user_id', user.id);
-          else await supabase.from('sessions').delete().eq('label', filterLabel).eq('user_id', user.id);
-          fetchSessions();
-        },
-      },
-    ]);
+  const doDelete = async () => {
+    await supabase.from('sessions').delete().eq('id', pendingDelete).eq('user_id', user.id);
+    setPendingDelete(null);
+    fetchSessions();
   };
 
-  const filtered = filterLabel === 'All Time' ? sessions : sessions.filter((s) => s.label === filterLabel);
-  const totalProfit = filtered.reduce((sum, s) => sum + s.profit, 0);
-  const totalHours = filtered.reduce((sum, s) => sum + s.hours, 0);
-  const winRate = totalHours > 0 ? (totalProfit / totalHours).toFixed(2) : 0;
-  const bestSession = filtered.length ? Math.max(...filtered.map((s) => s.profit)) : 0;
-  const worstSession = filtered.length ? Math.min(...filtered.map((s) => s.profit)) : 0;
-  const inp = { backgroundColor: C.input, borderWidth: 1, borderColor: C.inputBorder, borderRadius: 12, padding: 14, fontSize: 16, color: C.text, marginBottom: 10 };
+  const doClear = async () => {
+    let q = supabase.from('sessions').delete().eq('user_id', user.id);
+    if (filterLabel !== ALL) q = q.eq('label', filterLabel);
+    await q;
+    fetchSessions();
+  };
+
+  const shown = filterLabel === ALL ? sessions : sessions.filter((s) => s.label === filterLabel);
+  const profit = shown.reduce((a, s) => a + s.profit, 0);
+  const hours = shown.reduce((a, s) => a + s.hours, 0);
+  const perHour = hours > 0 ? profit / hours : 0;
+  const wins = shown.filter((s) => s.profit > 0).length;
+  const best = shown.length ? Math.max(...shown.map((s) => s.profit)) : 0;
+  const worst = shown.length ? Math.min(...shown.map((s) => s.profit)) : 0;
+
+  const field = (name, extra) => ({
+    backgroundColor: C.input,
+    borderWidth: 1,
+    borderColor: focused === name ? C.accent : C.inputBorder,
+    borderRadius: 10,
+    paddingHorizontal: 13,
+    height: 44,
+    fontSize: 15,
+    color: C.text,
+    marginBottom: 8,
+    ...extra,
+  });
+
+  const bind = (name) => ({
+    onFocus: () => setFocused(name),
+    onBlur: () => setFocused(null),
+    placeholderTextColor: C.subtext2,
+  });
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 100 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: C.text }}>📊 Grind</Text>
-        </View>
+    <View style={{ flex: 1 }}>
+      <Screen dark={dark}>
+        <Header
+          dark={dark}
+          title="Grind"
+          right={
+            <TouchableOpacity
+              onPress={() => setSheet('filter')}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                borderWidth: 1,
+                borderColor: C.cardBorder,
+                borderRadius: 9,
+                paddingHorizontal: 11,
+                height: 32,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: C.text }}>{filterLabel}</Text>
+              <Text style={{ fontSize: 10, color: C.subtext2 }}>▾</Text>
+            </TouchableOpacity>
+          }
+        />
 
-        <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.accentSoft, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 20, alignSelf: 'flex-start' }}>
-          <Text style={{ color: C.accent, fontWeight: '700', fontSize: 14 }}>🏷 {filterLabel}</Text>
-          <Text style={{ color: C.accent, marginLeft: 6 }}>▾</Text>
-        </TouchableOpacity>
-
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-          <View style={{ flex: 1, backgroundColor: totalProfit >= 0 ? C.greenSoft : C.redSoft, borderRadius: 16, padding: 14, alignItems: 'center' }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: totalProfit >= 0 ? C.green : C.red, marginBottom: 4 }}>PROFIT</Text>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: totalProfit >= 0 ? C.green : C.red }}>{totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(0)}</Text>
-          </View>
-          <View style={{ flex: 1, backgroundColor: C.accentSoft, borderRadius: 16, padding: 14, alignItems: 'center' }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: C.accent, marginBottom: 4 }}>WIN RATE</Text>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: C.accent }}>${winRate}/hr</Text>
-          </View>
-          <View style={{ flex: 1, backgroundColor: C.card, borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: C.cardBorder }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: C.subtext, marginBottom: 4 }}>SESSIONS</Text>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: C.text }}>{filtered.length}</Text>
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-          <View style={{ flex: 1, backgroundColor: C.greenSoft, borderRadius: 16, padding: 14, alignItems: 'center' }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: C.green, marginBottom: 4 }}>BEST</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: C.green }}>+${bestSession.toFixed(0)}</Text>
-          </View>
-          <View style={{ flex: 1, backgroundColor: C.redSoft, borderRadius: 16, padding: 14, alignItems: 'center' }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: C.red, marginBottom: 4 }}>WORST</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: C.red }}>${worstSession.toFixed(0)}</Text>
-          </View>
-          <View style={{ flex: 1, backgroundColor: C.card, borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: C.cardBorder }}>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: C.subtext, marginBottom: 4 }}>HOURS</Text>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: C.text }}>{totalHours.toFixed(1)}h</Text>
-          </View>
-        </View>
-
-        <BankrollChart sessions={filtered} dark={dark} />
-
-        <View style={{ backgroundColor: C.card, borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: C.cardBorder }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 14 }}>Log New Session</Text>
-          <TouchableOpacity onPress={() => setLabelModalVisible(true)} style={{ backgroundColor: C.accentSoft, borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.accent, fontWeight: '600' }}>🏷 {selectedLabel}</Text>
-            <Text style={{ color: C.accent }}>▾</Text>
-          </TouchableOpacity>
-          <TextInput style={inp} placeholder="Buy-in ($)" placeholderTextColor={C.subtext} keyboardType="numeric" value={buyin} onChangeText={setBuyin} />
-          <TextInput style={inp} placeholder="Cash-out ($)" placeholderTextColor={C.subtext} keyboardType="numeric" value={cashout} onChangeText={setCashout} />
-          <TextInput style={inp} placeholder="Hours played" placeholderTextColor={C.subtext} keyboardType="numeric" value={hours} onChangeText={setHours} />
-          <TextInput style={inp} placeholder="Stakes e.g. 1/2 (optional)" placeholderTextColor={C.subtext} value={stakes} onChangeText={setStakes} />
-          <TextInput style={[inp, { marginBottom: 14 }]} placeholder="Note (optional)" placeholderTextColor={C.subtext} value={note} onChangeText={setNote} />
-          <TouchableOpacity onPress={addSession} style={{ backgroundColor: C.accent, borderRadius: 14, padding: 16, alignItems: 'center' }}>
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Log Session</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '700', marginBottom: 10 }}>RECENT SESSIONS</Text>
-        {filtered.length === 0 && (
-          <View style={{ backgroundColor: C.card, borderRadius: 16, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: C.cardBorder, marginBottom: 16 }}>
-            <Text style={{ color: C.subtext, fontSize: 14 }}>No sessions yet. Log your first one!</Text>
-          </View>
-        )}
-        {filtered.map((s) => (
-          <View key={s.id} style={{ backgroundColor: C.card, borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: C.cardBorder }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <Text style={{ color: C.subtext, fontSize: 12 }}>{s.stakes ? s.stakes + ' · ' : ''}{s.hours}h</Text>
-                  {s.label && s.label !== 'All Time' && (
-                    <View style={{ backgroundColor: C.accentSoft, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                      <Text style={{ color: C.accent, fontSize: 10, fontWeight: '600' }}>{s.label}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={{ color: s.profit >= 0 ? C.green : C.red, fontSize: 20, fontWeight: '800' }}>{s.profit >= 0 ? '+' : ''}${s.profit}</Text>
-                {s.note ? <Text style={{ color: C.subtext, fontSize: 12, marginTop: 4 }}>{s.note}</Text> : null}
-              </View>
-              <View style={{ alignItems: 'flex-end', gap: 8 }}>
-                <View style={{ backgroundColor: s.profit >= 0 ? C.greenSoft : C.redSoft, borderRadius: 10, padding: 8 }}>
-                  <Text style={{ fontSize: 20 }}>{s.profit >= 0 ? '📈' : '📉'}</Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <TouchableOpacity onPress={() => openEdit(s)} style={{ backgroundColor: C.accentSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
-                    <Text style={{ color: C.accent, fontSize: 12, fontWeight: '700' }}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteSession(s.id)} style={{ backgroundColor: C.redSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}>
-                    <Text style={{ color: C.red, fontSize: 12, fontWeight: '700' }}>Del</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+        <Text
+          style={{
+            ...nums,
+            fontSize: 40,
+            fontWeight: '700',
+            letterSpacing: -1.8,
+            color: shown.length === 0 ? C.subtext2 : profit >= 0 ? C.green : C.red,
+          }}
+        >
+          {money(profit)}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 14, marginTop: 16, marginBottom: 24 }}>
+          {[
+            ['Per hour', hours > 0 ? money(perHour) : '—'],
+            ['Hours', hours > 0 ? hours.toFixed(0) : '—'],
+            ['Won', shown.length ? `${Math.round((wins / shown.length) * 100)}%` : '—'],
+            ['Sessions', String(shown.length)],
+          ].map(([label, value]) => (
+            <View key={label} style={{ flex: 1 }}>
+              <Text style={{ ...nums, fontSize: 16, fontWeight: '650', color: C.text }}>
+                {value}
+              </Text>
+              <Text style={{ ...TYPE.label, color: C.subtext2, marginTop: 4 }}>
+                {label.toUpperCase()}
+              </Text>
             </View>
-          </View>
-        ))}
-        {filtered.length > 0 && (
-          <TouchableOpacity onPress={clearSessions} style={{ borderWidth: 1, borderColor: C.red, borderRadius: 14, padding: 14, alignItems: 'center', marginTop: 8, marginBottom: 32 }}>
-            <Text style={{ color: C.red, fontWeight: '700', fontSize: 15 }}>Clear {filterLabel} Sessions</Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-
-      <Modal visible={!!editingSession} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <View style={{ backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
-            <Text style={{ color: C.text, fontWeight: '800', fontSize: 18, marginBottom: 16 }}>Edit Session</Text>
-            <TextInput style={{ backgroundColor: C.input, borderRadius: 12, padding: 14, fontSize: 16, color: C.text, marginBottom: 10, borderWidth: 1, borderColor: C.inputBorder }} placeholder="Buy-in ($)" placeholderTextColor={C.subtext} keyboardType="numeric" value={editBuyin} onChangeText={setEditBuyin} />
-            <TextInput style={{ backgroundColor: C.input, borderRadius: 12, padding: 14, fontSize: 16, color: C.text, marginBottom: 10, borderWidth: 1, borderColor: C.inputBorder }} placeholder="Cash-out ($)" placeholderTextColor={C.subtext} keyboardType="numeric" value={editCashout} onChangeText={setEditCashout} />
-            <TextInput style={{ backgroundColor: C.input, borderRadius: 12, padding: 14, fontSize: 16, color: C.text, marginBottom: 10, borderWidth: 1, borderColor: C.inputBorder }} placeholder="Hours" placeholderTextColor={C.subtext} keyboardType="numeric" value={editHours} onChangeText={setEditHours} />
-            <TextInput style={{ backgroundColor: C.input, borderRadius: 12, padding: 14, fontSize: 16, color: C.text, marginBottom: 16, borderWidth: 1, borderColor: C.inputBorder }} placeholder="Note (optional)" placeholderTextColor={C.subtext} value={editNote} onChangeText={setEditNote} />
-            <TouchableOpacity onPress={saveEdit} style={{ backgroundColor: C.accent, borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 10 }}>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Save Changes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setEditingSession(null)} style={{ padding: 14, alignItems: 'center' }}>
-              <Text style={{ color: C.subtext }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+          ))}
         </View>
-      </Modal>
 
-      <Modal visible={labelModalVisible} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <View style={{ backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
-            <Text style={{ color: C.text, fontWeight: '800', fontSize: 18, marginBottom: 16 }}>Choose Label</Text>
-            {labels.map((l) => (
-              <TouchableOpacity key={l} onPress={() => { setSelectedLabel(l); setLabelModalVisible(false); }} style={{ padding: 14, borderRadius: 12, marginBottom: 8, backgroundColor: selectedLabel === l ? C.accentSoft : C.input }}>
-                <Text style={{ color: selectedLabel === l ? C.accent : C.text, fontWeight: '600', fontSize: 15 }}>🏷 {l}</Text>
-              </TouchableOpacity>
+        <BankrollChart sessions={shown} dark={dark} />
+
+        {shown.length > 0 && (
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
+            <Card dark={dark} style={{ flex: 1 }}>
+              <Text style={{ ...TYPE.label, color: C.subtext2 }}>BEST</Text>
+              <Text style={{ ...nums, fontSize: 18, fontWeight: '700', color: C.green, marginTop: 5 }}>
+                {money(best)}
+              </Text>
+            </Card>
+            <Card dark={dark} style={{ flex: 1 }}>
+              <Text style={{ ...TYPE.label, color: C.subtext2 }}>WORST</Text>
+              <Text style={{ ...nums, fontSize: 18, fontWeight: '700', color: C.red, marginTop: 5 }}>
+                {money(worst)}
+              </Text>
+            </Card>
+          </View>
+        )}
+
+        <SectionLabel dark={dark}>New session</SectionLabel>
+        <Card dark={dark} style={{ marginBottom: 26 }}>
+          <TouchableOpacity
+            onPress={() => setSheet('label')}
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: C.inputBorder,
+              borderRadius: 10,
+              paddingHorizontal: 13,
+              height: 44,
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ fontSize: 15, color: C.text }}>{selectedLabel}</Text>
+            <Text style={{ fontSize: 10, color: C.subtext2 }}>▾</Text>
+          </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput
+              style={field('buyin', { flex: 1 })}
+              placeholder="Buy-in"
+              keyboardType="numeric"
+              value={form.buyin}
+              onChangeText={set('buyin')}
+              {...bind('buyin')}
+            />
+            <TextInput
+              style={field('cashout', { flex: 1 })}
+              placeholder="Cash-out"
+              keyboardType="numeric"
+              value={form.cashout}
+              onChangeText={set('cashout')}
+              {...bind('cashout')}
+            />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput
+              style={field('hours', { flex: 1 })}
+              placeholder="Hours"
+              keyboardType="numeric"
+              value={form.hours}
+              onChangeText={set('hours')}
+              {...bind('hours')}
+            />
+            <TextInput
+              style={field('stakes', { flex: 1 })}
+              placeholder="Stakes"
+              value={form.stakes}
+              onChangeText={set('stakes')}
+              {...bind('stakes')}
+            />
+          </View>
+          <TextInput
+            style={field('note', { marginBottom: 12 })}
+            placeholder="Note"
+            value={form.note}
+            onChangeText={set('note')}
+            {...bind('note')}
+          />
+
+          {/* Live arithmetic. Seeing the result before you commit catches a
+              transposed buy-in far more often than reading it back does. */}
+          {form.buyin !== '' && form.cashout !== '' && (
+            <Text style={{ ...TYPE.small, ...nums, color: C.subtext, marginBottom: 12 }}>
+              {money((parseFloat(form.cashout) || 0) - (parseFloat(form.buyin) || 0))} on this one
+            </Text>
+          )}
+
+          {error ? (
+            <Text style={{ ...TYPE.small, color: C.red, marginBottom: 12 }}>{error}</Text>
+          ) : null}
+
+          <Button dark={dark} label="Log it" onPress={addSession} />
+        </Card>
+
+        <SectionLabel dark={dark}>History</SectionLabel>
+        {shown.length === 0 ? (
+          <Card dark={dark}>
+            <Text style={{ ...TYPE.body, color: C.subtext }}>
+              {filterLabel === ALL ? 'Nothing logged yet.' : `Nothing under ${filterLabel} yet.`}
+            </Text>
+          </Card>
+        ) : (
+          <Card dark={dark} padded={false}>
+            {shown.map((s, i) => (
+              <View key={s.id}>
+                {i > 0 && <Divider dark={dark} />}
+                <View style={{ padding: 15 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                    <Text
+                      style={{
+                        ...nums,
+                        fontSize: 19,
+                        fontWeight: '700',
+                        color: s.profit >= 0 ? C.green : C.red,
+                        flex: 1,
+                      }}
+                    >
+                      {money(s.profit)}
+                    </Text>
+                    <Text style={{ ...TYPE.small, ...nums, color: C.subtext2 }}>
+                      {s.hours}h{s.stakes ? ` · ${s.stakes}` : ''}
+                      {s.label && s.label !== ALL ? ` · ${s.label}` : ''}
+                    </Text>
+                  </View>
+
+                  {s.note ? (
+                    <Text style={{ ...TYPE.small, color: C.subtext, marginTop: 6 }}>{s.note}</Text>
+                  ) : null}
+
+                  <View style={{ flexDirection: 'row', gap: 16, marginTop: 10 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditing({
+                          id: s.id,
+                          buyin: String(s.buyin),
+                          cashout: String(s.cashout),
+                          hours: String(s.hours),
+                          note: s.note || '',
+                        });
+                        setSheet('edit');
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: C.subtext }}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setPendingDelete(s.id);
+                        setSheet('delete');
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: C.red }}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
             ))}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-              <TextInput style={{ flex: 1, backgroundColor: C.input, borderRadius: 12, padding: 12, color: C.text, fontSize: 14 }} placeholder="Custom label..." placeholderTextColor={C.subtext} value={customLabel} onChangeText={setCustomLabel} />
+          </Card>
+        )}
+
+        {shown.length > 0 && (
+          <Button
+            dark={dark}
+            tone="ghost"
+            label={filterLabel === ALL ? 'Delete every session' : `Delete all ${filterLabel} sessions`}
+            onPress={() => setSheet('clear')}
+            style={{ marginTop: 16 }}
+          />
+        )}
+      </Screen>
+
+      <Sheet
+        dark={dark}
+        visible={sheet === 'edit'}
+        onClose={() => setSheet(null)}
+        title="Edit session"
+      >
+        {editing && (
+          <>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                style={field('e1', { flex: 1 })}
+                placeholder="Buy-in"
+                keyboardType="numeric"
+                value={editing.buyin}
+                onChangeText={(v) => setEditing((e) => ({ ...e, buyin: v }))}
+                {...bind('e1')}
+              />
+              <TextInput
+                style={field('e2', { flex: 1 })}
+                placeholder="Cash-out"
+                keyboardType="numeric"
+                value={editing.cashout}
+                onChangeText={(v) => setEditing((e) => ({ ...e, cashout: v }))}
+                {...bind('e2')}
+              />
+            </View>
+            <TextInput
+              style={field('e3')}
+              placeholder="Hours"
+              keyboardType="numeric"
+              value={editing.hours}
+              onChangeText={(v) => setEditing((e) => ({ ...e, hours: v }))}
+              {...bind('e3')}
+            />
+            <TextInput
+              style={field('e4', { marginBottom: 16 })}
+              placeholder="Note"
+              value={editing.note}
+              onChangeText={(v) => setEditing((e) => ({ ...e, note: v }))}
+              {...bind('e4')}
+            />
+            <Button dark={dark} label="Save" onPress={saveEdit} />
+            <Button
+              dark={dark}
+              tone="ghost"
+              label="Cancel"
+              onPress={() => setSheet(null)}
+              style={{ marginTop: 6 }}
+            />
+          </>
+        )}
+      </Sheet>
+
+      <Sheet
+        dark={dark}
+        visible={sheet === 'label' || sheet === 'filter'}
+        onClose={() => setSheet(null)}
+        title={sheet === 'filter' ? 'Show' : 'Label'}
+      >
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          {labels.map((l) => {
+            const active = (sheet === 'filter' ? filterLabel : selectedLabel) === l;
+            return (
               <TouchableOpacity
+                key={l}
                 onPress={() => {
-                  if (customLabel.trim()) {
-                    const n = customLabel.trim();
-                    setLabels((prev) => [...new Set([...prev, n])]);
-                    setSelectedLabel(n);
-                    setCustomLabel('');
-                    setLabelModalVisible(false);
-                  }
+                  if (sheet === 'filter') setFilterLabel(l);
+                  else setSelectedLabel(l);
+                  setSheet(null);
                 }}
-                style={{ backgroundColor: C.accent, borderRadius: 12, padding: 12, justifyContent: 'center' }}
+                style={{
+                  paddingHorizontal: 13,
+                  height: 36,
+                  justifyContent: 'center',
+                  borderRadius: 9,
+                  borderWidth: 1,
+                  borderColor: active ? C.accent : C.cardBorder,
+                  backgroundColor: active ? C.accentSoft : 'transparent',
+                }}
               >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Add</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: active ? C.accent : C.text }}>
+                  {l}
+                </Text>
               </TouchableOpacity>
-            </View>
-            <TouchableOpacity onPress={() => setLabelModalVisible(false)} style={{ marginTop: 16, padding: 14, alignItems: 'center' }}>
-              <Text style={{ color: C.subtext }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+            );
+          })}
         </View>
-      </Modal>
 
-      <Modal visible={filterModalVisible} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <View style={{ backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
-            <Text style={{ color: C.text, fontWeight: '800', fontSize: 18, marginBottom: 16 }}>Filter by Label</Text>
-            {labels.map((l) => (
-              <TouchableOpacity key={l} onPress={() => { setFilterLabel(l); setFilterModalVisible(false); }} style={{ padding: 14, borderRadius: 12, marginBottom: 8, backgroundColor: filterLabel === l ? C.accentSoft : C.input }}>
-                <Text style={{ color: filterLabel === l ? C.accent : C.text, fontWeight: '600', fontSize: 15 }}>🏷 {l}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity onPress={() => setFilterModalVisible(false)} style={{ marginTop: 8, padding: 14, alignItems: 'center' }}>
-              <Text style={{ color: C.subtext }}>Cancel</Text>
-            </TouchableOpacity>
+        {sheet === 'label' && (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput
+              style={field('custom', { flex: 1, marginBottom: 0 })}
+              placeholder="New label"
+              value={customLabel}
+              onChangeText={setCustomLabel}
+              {...bind('custom')}
+            />
+            <Button
+              dark={dark}
+              label="Add"
+              disabled={!customLabel.trim()}
+              onPress={() => {
+                const n = customLabel.trim();
+                setLabels((prev) => [...new Set([...prev, n])]);
+                setSelectedLabel(n);
+                setCustomLabel('');
+                setSheet(null);
+              }}
+              style={{ paddingHorizontal: 20, width: 84 }}
+            />
           </View>
-        </View>
-      </Modal>
+        )}
+      </Sheet>
+
+      <ConfirmSheet
+        dark={dark}
+        visible={sheet === 'delete'}
+        onClose={() => setSheet(null)}
+        title="Delete this session?"
+        body="It cannot be brought back."
+        confirmLabel="Delete"
+        onConfirm={doDelete}
+      />
+
+      <ConfirmSheet
+        dark={dark}
+        visible={sheet === 'clear'}
+        onClose={() => setSheet(null)}
+        title={filterLabel === ALL ? 'Delete every session?' : `Delete all ${filterLabel} sessions?`}
+        body={`${shown.length} ${shown.length === 1 ? 'session' : 'sessions'} will be removed for good.`}
+        confirmLabel={`Delete ${shown.length}`}
+        onConfirm={doClear}
+      />
     </View>
   );
 }
