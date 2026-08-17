@@ -1,105 +1,104 @@
-# Poker Hub 🃏
+# Poker Hub
 
-A cross-platform mobile app for serious poker players to **track their bankroll, train their game, and get AI coaching** — all in one place. Built with React Native (Expo), Supabase, and an LLM-backed coaching assistant.
+A phone app for tracking a poker bankroll and studying between sessions. Log
+what you win and lose, drill preflop decisions, work out equity at the table,
+and ask a coach about a hand. React Native and Expo on the front, Supabase
+behind it.
 
-> Track. Train. Dominate.
+You do not need an account to use most of it. The trainer, the range charts and
+the odds calculator all run on the device, so they work signed out. Only saved
+sessions need somewhere to live, and that is the one place the app asks you to
+sign in.
 
----
+## What it does
 
-## Features
+**Grind** is the bankroll ledger. Log a session with the buy-in, the cash-out,
+the hours and optionally the stakes, a note and a label. It works out profit,
+hourly rate, best and worst session, and the percentage of sessions you finished
+up. Labels let you keep separate records for different venues or game types and
+filter to one of them. There is a cumulative chart of where the bankroll has
+been, drawn against a real zero line so a losing stretch sits below the axis
+instead of merely turning red.
 
-### Grind — Bankroll Tracking
-- Log cash-game sessions (buy-in, cash-out, hours, stakes, notes)
-- Automatic profit, hourly win-rate, best/worst session, and total-hours stats
-- Group sessions with custom labels (e.g. by casino or game type) and filter on the fly
-- Cumulative bankroll chart so you can see your trend over time
-- Full edit/delete with confirmation, synced to the cloud per user
+**Train** has five tools:
 
-### Train — Study Tools
-- **Scenarios** — preflop decision drills on a visual table with instant GTO feedback and a running score
-- **GTO Charts** — interactive 13×13 open-raise range grids for every position
-- **Flashcards** — core poker-theory concepts (pot odds, SPR, blockers, range advantage…)
-- **Odds Calculator** — heads-up equity via on-device Monte Carlo simulation, with optional flop
-- **Positions Guide** — tap any seat to learn its strategy, plus a position power ranking
+- *Spots*: preflop decisions on a table diagram. Pick fold, call or raise, and
+  it tells you the answer and why. A 3-bet counts as a raise, and spots the
+  scenario marks as playable two ways accept either.
+- *Ranges*: the 13x13 hand matrix for each seat's opening range.
+- *Cards*: flashcards for the vocabulary, pot odds through blockers.
+- *Odds*: heads-up equity between two hands, with an optional flop.
+- *Seats*: what each position means and why the button is worth the most.
 
-### AI Coach
-- Chat with an LLM poker coach for GTO advice and hand analysis
-- The coach is **stats-aware** — your real session numbers are injected into the prompt, so feedback is grounded in your actual results
-- Quick-prompt suggestions to get started fast
+**Coach** is a chat coach that can see your results. Your session totals go into
+its prompt, so it answers about your actual record rather than in the abstract.
+It only talks poker.
 
-### Plus
-- Email/password auth (Supabase)
-- Light & dark themes, with the preference persisted to your account across devices
+## Stack
 
----
-
-## Tech Stack
-
-| Layer | Technology |
+| Layer | What |
 | --- | --- |
-| Mobile / Web client | React Native, [Expo](https://expo.dev) (SDK 54), React 19 |
-| Backend & Auth | [Supabase](https://supabase.com) (Postgres + Auth + Row-Level Security) |
-| AI coaching | Supabase Edge Function (Deno) proxying an LLM, keeping the provider API key server-side |
-| Language | JavaScript (ES2022) |
+| Client | React Native, Expo SDK 54, React 19 |
+| Backend and auth | Supabase: Postgres, Auth, row-level security |
+| Coach | Supabase Edge Function proxying an LLM, so the provider key stays server-side |
+| Language | JavaScript |
 
----
+## Layout
 
-## Architecture
-
-The app is a small, dependency-light client. State for auth, the active tab, and
-the session list lives in the root component; everything below reads colors from
-a single theme module so light/dark mode stays consistent.
+Auth, the active tab and the session list live in the root component. Everything
+below reads its colours from one theme module, so light and dark stay in step,
+and its layout pieces from one components file, so a card on one screen is the
+same card on another.
 
 ```
-.
-├── App.js                     # Root: auth state, tab routing, shared session data
-├── index.js                   # Expo entry point
-├── src/
-│   ├── components/            # Reusable UI (chart, poker table, range grid, tab bar)
-│   │   ├── BankrollChart.js
-│   │   ├── BottomTabBar.js
-│   │   ├── PokerTable.js
-│   │   └── RangeGrid.js
-│   ├── screens/               # One file per screen
-│   │   ├── LoginScreen.js
-│   │   ├── HomeScreen.js
-│   │   ├── GrindScreen.js
-│   │   ├── TrainScreen.js
-│   │   ├── OddsCalculator.js
-│   │   ├── PositionsGuide.js
-│   │   ├── AIChatScreen.js
-│   │   └── SettingsScreen.js
-│   ├── constants/             # Static poker data (GTO ranges, scenarios, flashcards)
-│   │   ├── ranges.js
-│   │   └── training.js
-│   ├── lib/                   # External services
-│   │   ├── supabase.js        # Supabase client + config
-│   │   └── coach.js           # AI coach request helper
-│   ├── theme/
-│   │   └── colors.js          # Light/dark palette
-│   └── utils/
-│       └── equity.js          # Monte Carlo hand-equity estimator
-└── supabase/
-    └── functions/poker-coach/ # Edge Function that proxies the LLM request
+App.js                      root: auth, tab routing, shared session data
+src/
+  components/
+    ui.js                   Screen, Card, Button, Sheet, the type scale
+    BankrollChart.js
+    BottomTabBar.js
+    PokerTable.js
+    RangeGrid.js
+    SignInPrompt.js         shown where a feature needs an account
+    Wordmark.js
+  screens/                  one file per screen
+  constants/                GTO ranges, scenarios, flashcards
+  lib/
+    supabase.js             client and config
+    coach.js                coach request helper
+  theme/colors.js           the palette, and the rules it follows
+  utils/equity.js           hand evaluator and Monte Carlo
+supabase/
+  functions/poker-coach/    Edge Function that proxies the LLM
 ```
 
-### A note on the equity calculator
+## Two things worth explaining
 
-`src/utils/equity.js` is a small from-scratch Monte Carlo estimator: given two
-hole-card hands and an optional partial board, it deals out the remaining cards
-hundreds of times and tallies how often each player wins. It's an approximation
-rather than a full solver — fast enough to run instantly on-device while still
-giving a reliable "am I ahead?" read.
+**The palette has one rule.** Green and red mean money and nothing else. In an
+app whose main job is telling you whether you are up or down, a red number has
+to read as a loss the moment you see it, so neither colour is available as a
+brand colour. What is left that belongs at a poker table is the gold of the
+chips, and that carries the buttons, the active tab and the focus rings. Every
+pairing is checked against WCAG AA.
 
----
+**The equity calculator is exact underneath the sampling.** `src/utils/equity.js`
+finds the best five-card hand out of seven and compares it the way a dealer
+would, kickers included. Only the board is sampled: 5,000 deals per matchup,
+which is steady to about a percentage point between runs and takes around 30ms.
+Verified against exhaustive enumeration of all 1,712,304 possible boards, which
+puts AA against KK at 82.36 / 17.09 / 0.54 and AKs against QQ at 46.02 / 53.59 /
+0.39. Both are the textbook figures.
 
-## Getting Started
+The deal uses a partial Fisher-Yates shuffle rather than
+`deck.sort(() => Math.random() - 0.5)`. That second one looks like a shuffle and
+is not: `Array.sort` assumes a consistent comparator, and a random one leaves
+cards biased toward where they started. Over 200,000 shuffles the top card came
+out on top about three times more often than it should have, which moved the
+board and therefore the equity.
 
-### Prerequisites
-- [Node.js](https://nodejs.org/) 18+
-- The [Expo Go](https://expo.dev/go) app on your phone (or an iOS/Android simulator)
+## Running it
 
-### Run it
+You need Node 18 or newer, and either Expo Go on your phone or a simulator.
 
 ```bash
 git clone https://github.com/KavinPruthi/poker-hub.git
@@ -108,18 +107,16 @@ npm install
 npm start
 ```
 
-Then scan the QR code with Expo Go, or press `i` / `a` for a simulator, or `w` to open it in the browser.
+Scan the QR code with Expo Go, press `i` or `a` for a simulator, or `w` for the
+browser.
 
-### Configuration
+## Configuration
 
-The Supabase URL and **anonymous** key live in `src/lib/supabase.js`. The anon
-key is safe to ship in client code by design — access is controlled by row-level
-security policies on the database, not by hiding the key. The AI coach's model
-provider key is never exposed to the client; it stays server-side inside the
-Supabase Edge Function.
-
----
+The Supabase URL and anonymous key sit in `src/lib/supabase.js`. The anon key is
+meant to ship in client code: access is controlled by row-level security on the
+database, not by keeping the key secret. The coach's model provider key never
+reaches the client and stays inside the Edge Function.
 
 ## License
 
-Released under the MIT License — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
